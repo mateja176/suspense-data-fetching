@@ -90,9 +90,11 @@ const getUsers = () =>
     .then(({ results }) => results as IUsers)
     .then(throttle);
 
-const wrapPromise = <Data extends {}>(
+type GetData<Data> = () => never | Data;
+
+const createGetData = <Data extends {}>(
   promise: Promise<Data>,
-): (() => never | Data) => {
+): GetData<Data> => {
   let loading = true;
   let error: Error | null = null;
   let data: Data | null = null;
@@ -133,15 +135,25 @@ const Users: React.FC<{ users: IUsers }> = ({ users }) => (
   </ul>
 );
 
-const resource = wrapPromise(getUsers());
+const getUserData = createGetData(getUsers());
 
-const Adapter = () => <Users users={resource()} />;
+const withData = <Data extends {}>(getData: GetData<Data>) => <
+  Key extends string
+>(
+  key: Key,
+) => <Props extends { [key in Key]: Data }>(
+  Component: React.ComponentType<Props>,
+) => (props: Omit<Props, Key>) => (
+  <Component {...({ ...props, [key]: getData() } as Props)} />
+);
+
+const UsersWithData = withData(getUserData)('users')(Users);
 
 const App: React.FC = () => (
   <React.Suspense
     fallback={<img src="https://i.imgur.com/HE134Vr.gif" alt="loading" />}
   >
-    <Adapter />
+    <UsersWithData />
   </React.Suspense>
 );
 
