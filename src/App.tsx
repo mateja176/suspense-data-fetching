@@ -1,10 +1,5 @@
 import React from 'react';
 
-const getUsers = () =>
-  fetch('https://randomuser.me/api')
-    .then(res => res.json())
-    .then(({ results }) => results);
-
 export interface Name {
   title: string;
   first: string;
@@ -82,13 +77,55 @@ export interface IUser {
   nat: string;
 }
 
+type IUsers = IUser[];
+
+const throttle = <Data extends {}>(data: Data) =>
+  new Promise<Data>(resolve => {
+    setTimeout(resolve, 2000, data);
+  });
+
+const getUsers = () =>
+  fetch('https://randomuser.me/api')
+    .then(res => res.json())
+    .then(({ results }) => results as IUsers)
+    .then(throttle);
+
+const wrapPromise = <Data extends {}>(
+  promise: Promise<Data>,
+): (() => never | Data) => {
+  let loading = true;
+  let error: Error | null = null;
+  let data: Data | null = null;
+
+  const suspender = promise
+    .then(d => {
+      data = d;
+    })
+    .catch(e => {
+      error = e;
+    })
+    .finally(() => {
+      loading = false;
+    });
+
+  return () => {
+    if (loading) {
+      throw suspender;
+    } else if (error) {
+      throw error;
+    } else {
+      return data!;
+    }
+  };
+};
+
 const User: React.FC<IUser> = user => (
   <li>
     <pre>{JSON.stringify(user, null, 2)}</pre>
   </li>
 );
 
-const Users: React.FC<{ users: IUser[] }> = ({ users }) => (
+const Users: React.FC<{ users: IUsers }> = ({ users }) => (
   <ul>
     {users.map(user => (
       <User key={user.login.uuid} {...user}></User>
@@ -96,18 +133,16 @@ const Users: React.FC<{ users: IUser[] }> = ({ users }) => (
   </ul>
 );
 
-const App: React.FC = () => {
-  const [users, setUsers] = React.useState([]);
+const resource = wrapPromise(getUsers());
 
-  React.useEffect(() => {
-    getUsers().then(setUsers);
-  }, []);
+const Adapter = () => <Users users={resource()} />;
 
-  return (
-    <div>
-      <Users users={users} />
-    </div>
-  );
-};
+const App: React.FC = () => (
+  <React.Suspense
+    fallback={<img src="https://i.imgur.com/HE134Vr.gif" alt="loading" />}
+  >
+    <Adapter />
+  </React.Suspense>
+);
 
 export default App;
